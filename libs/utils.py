@@ -15,5 +15,4 @@ def replace_nans(ts):
     ts = np.array(ts, dtype=np.float32)
     ts[np.isnan(ts)] = -4800
     ts = ts / 2400.0
-
     return ts.tolist()

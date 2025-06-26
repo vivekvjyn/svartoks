@@ -15,5 +15,4 @@ EXPOSE 22
 CMD    ["/usr/sbin/sshd", "-D"]
 
 FROM       python:3.10.16 as app
-ADD . /
 RUN pip install -r requirements.txt
