@@ -1,2 +1,4 @@
-torch
-numpy
+torch==2.7.0
+numpy==1.26.4
+tqdm==4.67.1
+pandas==2.3.0
