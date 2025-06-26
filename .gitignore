@@ -1,0 +1,9 @@
+.ipynb_checkpoints
+.ropeproject
+__pycache__
+dataset
+triplets
+notebooks
+saved_models
+lib/__pycache__
+models/__pycache__
