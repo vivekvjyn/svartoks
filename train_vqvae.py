@@ -100,6 +100,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=1000, help="Number of training epochs")
     parser.add_argument('--batch_size', type=int, default=64, help="Batch size")
     parser.add_argument('--run_id', type=str, default='0001', help="Experiment identifier")
+
     args = parser.parse_args()
 
     train_data, test_data = load_datasets()

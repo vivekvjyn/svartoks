@@ -14,5 +14,6 @@ RUN apt-get clean && \
 EXPOSE 22
 CMD    ["/usr/sbin/sshd", "-D"]
 
-FROM       python:3.10.16 as app
+FROM       python:3.10.16 AS app
+ADD requirements.txt .
 RUN pip install -r requirements.txt
