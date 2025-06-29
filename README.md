@@ -12,13 +12,13 @@ These tokens can be used for downstream tasks such as classification, imputation
 
 ## How to run
 
-Install the dependencies:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Install the dependencies:
+Run the script:
 ```bash
 python train_vqvae.py --epoch EPOCH --batch_size BATCH_SIZE --run_id RUN_ID
 ```
