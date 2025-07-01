@@ -38,7 +38,7 @@ def run_epoch(model, optimizer, data_loader, mode):
     model.train() if mode == 'train' else model.eval()
     total_loss = 0
 
-    for (batch,) in tqdm(data_loader):
+    for (batch,) in data_loader:
         batch = batch.to(dtype=torch.float, device=device)
         loss, *_ = model.shared_eval(batch, optimizer, mode)
         total_loss += loss.item()
