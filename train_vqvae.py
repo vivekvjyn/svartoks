@@ -65,6 +65,7 @@ def train_model(train_loader, val_loader, test_loader, epochs, run_id):
     model = VQVAE().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     history = []
+    min_val_loss = np.inf
 
     print("Training...")
     for epoch in range(epochs):
@@ -74,12 +75,16 @@ def train_model(train_loader, val_loader, test_loader, epochs, run_id):
         print(f"Epoch {epoch + 1}: Train Loss = {train_loss:.8f}, Val Loss = {val_loss:.8f}")
         history.append({"epoch": epoch + 1, "train_loss": train_loss, "val_loss": val_loss})
 
+        if val_loss < min_val_loss:
+            save_model(model, run_id)
+            min_val_loss = val_loss
+
     print("Evaluating")
     test_loss = run_epoch(model, optimizer, test_loader, 'test')
     print(f"Test Loss: {test_loss:.8f}")
 
     save_logs(history, test_loss, run_id)
-    save_model(model, run_id)
+
 
 
 def load_datasets():
