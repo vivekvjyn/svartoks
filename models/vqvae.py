@@ -109,7 +109,7 @@ class VectorQuantizer(nn.Module):
 
 
 class VQVAE(BaseModel):
-    def __init__(self, num_hiddens=256, num_residual_layers=2, num_residual_hiddens=256, embedding_dim=64, num_embeddings=512, commitment_cost=0.25):
+    def __init__(self, num_hiddens=128, num_residual_layers=2, num_residual_hiddens=128, embedding_dim=16, num_embeddings=512, commitment_cost=0.25):
         super().__init__()
         self.vq = VectorQuantizer(num_embeddings, embedding_dim, commitment_cost)
         self.encoder = Encoder(1, num_hiddens, num_residual_layers, num_residual_hiddens, embedding_dim)

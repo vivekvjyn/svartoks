@@ -38,7 +38,7 @@ def run_epoch(model, optimizer, data_loader, mode):
     model.train() if mode == 'train' else model.eval()
     total_loss = 0
 
-    for (batch,) in data_loader:
+    for (batch,) in tqdm(data_loader):
         batch = batch.to(dtype=torch.float, device=device)
         loss, *_ = model.shared_eval(batch, optimizer, mode)
         total_loss += loss.item()
@@ -61,11 +61,12 @@ def save_model(model, run_id):
     print(f"Model saved to {model_dir}/tokenizer.pth")
 
 
-def train_model(train_loader, val_loader, test_loader, epochs, run_id):
+def train_model(train_loader, val_loader, test_loader, epochs, max_patience, run_id):
     model = VQVAE().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
     history = []
     min_val_loss = np.inf
+    patience = 0
 
     print("Training...")
     for epoch in range(epochs):
@@ -78,7 +79,14 @@ def train_model(train_loader, val_loader, test_loader, epochs, run_id):
         if val_loss < min_val_loss:
             save_model(model, run_id)
             min_val_loss = val_loss
+            patience = 0
+        else:
+            model = torch.load(f'saved_models/{run_id}/tokenizer.pth', map_location=device, weights_only=False)
+            patience += 1
+            if patience == max_patience:
+                break
 
+    model = torch.load(f'saved_models/{run_id}/tokenizer.pth', map_location=device, weights_only=False)
     print("Evaluating")
     test_loss = run_epoch(model, optimizer, test_loader, 'test')
     print(f"Test Loss: {test_loss:.8f}")
@@ -89,10 +97,10 @@ def train_model(train_loader, val_loader, test_loader, epochs, run_id):
 
 def load_datasets():
     print("Loading datasets...")
-    with open('dataset/TRAIN.pkl', 'rb') as f:
-        train_data = pickle.load(f)
+    #with open('dataset/TRAIN.pkl', 'rb') as f:
+    #    train_data = pickle.load(f)
     with open('dataset/PRETRAIN_TRAIN.pkl', 'rb') as f:
-        train_data += pickle.load(f)
+        train_data = pickle.load(f)
     with open('dataset/TEST.pkl', 'rb') as f:
         test_data = pickle.load(f)
     print("Datasets loaded.")
@@ -101,9 +109,10 @@ def load_datasets():
 
 def main():
     parser = argparse.ArgumentParser(description="Train VQ-VAE tokenizer")
-    parser.add_argument('--max_length', type=int, default=1024, help="Maximum sequence length")
-    parser.add_argument('--epochs', type=int, default=1000, help="Number of training epochs")
-    parser.add_argument('--batch_size', type=int, default=64, help="Batch size")
+    parser.add_argument('--max_length', type=int, default=512, help="Maximum sequence length")
+    parser.add_argument('--epochs', type=int, default=25, help="Number of training epochs")
+    parser.add_argument('--batch_size', type=int, default=256, help="Batch size")
+    parser.add_argument('--max_patience', type=int, default=5, help="Maximum patience level")
     parser.add_argument('--run_id', type=str, default='0001', help="Experiment identifier")
 
     args = parser.parse_args()
@@ -117,7 +126,7 @@ def main():
     val_loader = build_data_loader(val_tensor, args.batch_size)
     test_loader = build_data_loader(test_tensor, args.batch_size)
 
-    train_model(train_loader, val_loader, test_loader, args.epochs, args.run_id)
+    train_model(train_loader, val_loader, test_loader, args.epochs, args.max_patience, args.run_id)
 
 
 if __name__ == '__main__':
