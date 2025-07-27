@@ -8,9 +8,9 @@ We train a VQ-VAE model to reconstruct time series by quantizing the latent repr
 For more details, refer to the [TOTEM paper](https://arxiv.org/abs/2402.16412).
 These tokens can be used for downstream tasks such as classification, imputation, and more.
 
-![VQ-VAE](vqvae.png)
+![VQ-VAE](imgs/vqvae.png)
 
-## How to run
+## Reproduce
 
 Install dependencies:
 

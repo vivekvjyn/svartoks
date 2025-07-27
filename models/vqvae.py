@@ -81,37 +81,10 @@ class Decoder(nn.Module):
         return torch.squeeze(x)
 
 
-class VectorQuantizer(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, commitment_cost):
-        super(VectorQuantizer, self).__init__()
-        self._embedding_dim = embedding_dim
-        self._num_embeddings = num_embeddings
-        self._embedding = nn.Embedding(self._num_embeddings, self._embedding_dim)
-        self._embedding.weight.data.uniform_(-1 / self._num_embeddings, 1 / self._num_embeddings)
-        self._commitment_cost = commitment_cost
-
-    def forward(self, inputs):
-        inputs = inputs.permute(0, 2, 1).contiguous()
-        input_shape = inputs.shape
-        flat_input = inputs.view(-1, self._embedding_dim)
-        distances = (torch.sum(flat_input ** 2, dim=1, keepdim=True) + torch.sum(self._embedding.weight ** 2, dim=1) - 2 * torch.matmul(flat_input, self._embedding.weight.t()))
-        encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
-        encodings = torch.zeros(encoding_indices.shape[0], self._num_embeddings, device=inputs.device)
-        encodings.scatter_(1, encoding_indices, 1)
-        quantized = torch.matmul(encodings, self._embedding.weight).view(input_shape)
-        e_latent_loss = F.mse_loss(quantized.detach(), inputs)
-        q_latent_loss = F.mse_loss(quantized, inputs.detach())
-        loss = q_latent_loss + self._commitment_cost * e_latent_loss
-        quantized = inputs + (quantized - inputs).detach()
-        avg_probs = torch.mean(encodings, dim=0)
-        perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
-        return loss, quantized.permute(0, 2, 1).contiguous(), perplexity, self._embedding.weight, encoding_indices, encodings
-
-
 class VQVAE(BaseModel):
-    def __init__(self, num_hiddens=128, num_residual_layers=2, num_residual_hiddens=128, embedding_dim=16, num_embeddings=512, commitment_cost=0.25):
+    def __init__(self, num_hiddens=128, num_residual_layers=2, num_residual_hiddens=128, embedding_dim=8, num_embeddings=128, commitment_cost=0.25):
         super().__init__()
-        self.vq = VectorQuantizer(num_embeddings, embedding_dim, commitment_cost)
+        #self.vq = VectorQuantizer(num_embeddings, embedding_dim, commitment_cost)
         self.encoder = Encoder(1, num_hiddens, num_residual_layers, num_residual_hiddens, embedding_dim)
         self.decoder = Decoder(embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens)
 
@@ -119,19 +92,19 @@ class VQVAE(BaseModel):
         if mode == 'train':
             optimizer.zero_grad()
             z = self.encoder(batch)
-            vq_loss, quantized, perplexity, embedding_weight, encoding_indices, encodings = self.vq(z)
-            data_recon = self.decoder(quantized)
+            #vq_loss, quantized, perplexity, embedding_weight, encoding_indices, encodings = self.vq(z)
+            data_recon = self.decoder(z)
             recon_error = F.mse_loss(data_recon, batch)
-            loss = recon_error + vq_loss
+            loss = recon_error #+ vq_loss
             loss.backward()
             optimizer.step()
 
         if mode == 'test':
             with torch.no_grad():
                 z = self.encoder(batch)
-                vq_loss, quantized, perplexity, embedding_weight, encoding_indices, encodings = self.vq(z)
-                data_recon = self.decoder(quantized)
+                #vq_loss, quantized, perplexity, embedding_weight, encoding_indices, encodings = self.vq(z)
+                data_recon = self.decoder(z)
                 recon_error = F.mse_loss(data_recon, batch)
-                loss = recon_error + vq_loss
+                loss = recon_error #+ vq_loss
 
-        return loss, vq_loss, recon_error, data_recon, perplexity, embedding_weight, encoding_indices, encodings
+        return recon_error, data_recon, #perplexity, embedding_weight, encoding_indices, encodings #loss, vq_loss

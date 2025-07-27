@@ -1,40 +1,51 @@
-import os
-import pickle
+import argparse
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-import argparse
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-
-from libs.utils import pad, replace_nans
+from tqdm import tqdm
+from libs.utils import *
 from models.vqvae import VQVAE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def padded_tensor(sequences, max_length):
-    padded = np.array([pad(seq, max_length) for seq in sequences])
-    return torch.tensor(padded, dtype=torch.float).to(device)
+def prepare_dataset(data, max_length, split_ratio):
+    """
+    Prepare the dataset for training.
+
+    Args:
+        data (list): The data to prepare.
+        max_length (int): The maximum length of the sequences.
+        split_ratio (float): The ratio to split the data.
+
+    Returns:
+        tuple: The left and right sequences.
+    """
+    seqs = [replace_nans(x) for sample in data for x in (sample[2], sample[3], sample[4])]
+
+    split_index = int(len(seqs) * split_ratio)
+    left_seqs = np.array([pad(seq, max_length) for seq in seqs[split_index:]])
+    right_seqs = np.array([pad(seq, max_length) for seq in seqs[:split_index]])
+
+    left_seqs = torch.tensor(left_seqs, dtype=torch.float).to(device)
+    right_seqs = torch.tensor(right_seqs, dtype=torch.float).to(device)
+
+    return left_seqs, right_seqs
 
 
-def process_dataset(data, max_length, validation=False):
-    sequences = [replace_nans(x) for sample in data for x in (sample[2], sample[3], sample[4])]
+def propagate(model, optimizer, data_loader, mode):
+    """
+    Propagate the model through the data loader.
 
-    if validation:
-        split_index = len(sequences) // 4
-        val_sequences = padded_tensor(sequences[:split_index], max_length)
-        train_sequences = padded_tensor(sequences[split_index:], max_length)
-        return train_sequences, val_sequences
-    else:
-        return padded_tensor(sequences, max_length)
+    Args:
+        model (torch.nn.Module): The model to propagate.
+        optimizer (torch.optim.Optimizer): The optimizer to use.
+        data_loader (torch.utils.data.DataLoader): The data loader to use.
+        mode (str): The mode to use.
 
-
-def build_data_loader(tensor_data, batch_size, shuffle=True):
-    dataset = TensorDataset(tensor_data)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-
-
-def run_epoch(model, optimizer, data_loader, mode):
+    Returns:
+        float: The total loss.
+    """
     model.train() if mode == 'train' else model.eval()
     total_loss = 0
 
@@ -43,90 +54,77 @@ def run_epoch(model, optimizer, data_loader, mode):
         loss, *_ = model.shared_eval(batch, optimizer, mode)
         total_loss += loss.item()
 
-    return total_loss / len(data_loader)
+    return total_loss
 
 
-def save_logs(history, test_loss, run_id):
-    result_dir = f'results/{run_id}'
-    os.makedirs(result_dir, exist_ok=True)
+def fit_model(train_loader, val_loader, test_loader, epochs, run_id):
+    """
+    Train the VQ-VAE tokenizer.
 
-    pd.DataFrame(history).to_csv(f'{result_dir}/training_log.csv', index=False)
-    pd.DataFrame([{'test_loss': test_loss}]).to_csv(f'{result_dir}/test_log.csv', index=False)
+    Args:
+        train_loader (torch.utils.data.DataLoader): Training data loader.
+        val_loader (torch.utils.data.DataLoader): Validation data loader.
+        test_loader (torch.utils.data.DataLoader): Test data loader.
+        epochs (int): Number of training epochs.
+        run_id (str): Unique identifier for the training run.
+    """
 
-
-def save_model(model, run_id):
-    model_dir = f'saved_models/{run_id}'
-    os.makedirs(model_dir, exist_ok=True)
-    torch.save(model, os.path.join(model_dir, 'tokenizer.pth'))
-    print(f"Model saved to {model_dir}/tokenizer.pth")
-
-
-def train_model(train_loader, val_loader, test_loader, epochs, max_patience, run_id):
     model = VQVAE().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
-    history = []
+    history = pd.DataFrame(columns=["train loss", "val loss"])
     min_val_loss = np.inf
-    patience = 0
 
     print("Training...")
     for epoch in range(epochs):
-        train_loss = run_epoch(model, optimizer, train_loader, 'train')
-        val_loss = run_epoch(model, optimizer, val_loader, 'test')
+        print(f"Epoch {epoch+1}/{epochs}:")
+        train_loss = propagate(model, optimizer, train_loader, 'train')
+        val_loss = propagate(model, optimizer, val_loader, 'test')
 
-        print(f"Epoch {epoch + 1}: Train Loss = {train_loss:.8f}, Val Loss = {val_loss:.8f}")
-        history.append({"epoch": epoch + 1, "train_loss": train_loss, "val_loss": val_loss})
+        log_metrics(train_loss, mode="Train")
+        log_metrics(val_loss, mode="Validation")
+        history.loc[len(history)] = [train_loss, val_loss]
 
         if val_loss < min_val_loss:
             save_model(model, run_id)
             min_val_loss = val_loss
-            patience = 0
-        else:
-            model = torch.load(f'saved_models/{run_id}/tokenizer.pth', map_location=device, weights_only=False)
-            patience += 1
-            if patience == max_patience:
-                break
 
     model = torch.load(f'saved_models/{run_id}/tokenizer.pth', map_location=device, weights_only=False)
     print("Evaluating")
-    test_loss = run_epoch(model, optimizer, test_loader, 'test')
+    test_loss = propagate(model, optimizer, test_loader, 'test')
     print(f"Test Loss: {test_loss:.8f}")
 
     save_logs(history, test_loss, run_id)
 
 
+def get_args():
+    """
+    Parse command line arguments.
 
-def load_datasets():
-    print("Loading datasets...")
-    #with open('dataset/TRAIN.pkl', 'rb') as f:
-    #    train_data = pickle.load(f)
-    with open('dataset/PRETRAIN_TRAIN.pkl', 'rb') as f:
-        train_data = pickle.load(f)
-    with open('dataset/TEST.pkl', 'rb') as f:
-        test_data = pickle.load(f)
-    print("Datasets loaded.")
-    return train_data, test_data
+    Returns:
+        argparse.Namespace: Parsed arguments.
+    """
+    parser = argparse.ArgumentParser(description="Train VQ-VAE tokenizer")
+    parser.add_argument('--max_length', type=int, default=512, help="Maximum sequence length")
+    parser.add_argument('--epochs', type=int, default=50, help="Number of training epochs")
+    parser.add_argument('--batch_size', type=int, default=1024, help="Batch size")
+    parser.add_argument('--run_id', type=str, default='newrun1', help="Experiment identifier")
+
+    return parser.parse_args()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train VQ-VAE tokenizer")
-    parser.add_argument('--max_length', type=int, default=512, help="Maximum sequence length")
-    parser.add_argument('--epochs', type=int, default=25, help="Number of training epochs")
-    parser.add_argument('--batch_size', type=int, default=256, help="Batch size")
-    parser.add_argument('--max_patience', type=int, default=5, help="Maximum patience level")
-    parser.add_argument('--run_id', type=str, default='0001', help="Experiment identifier")
-
-    args = parser.parse_args()
+    args = get_args()
 
     train_data, test_data = load_datasets()
 
-    train_tensor, val_tensor = process_dataset(train_data, args.max_length, validation=True)
-    test_tensor = process_dataset(test_data, args.max_length)
+    train, val = prepare_dataset(train_data, args.max_length, split_ratio=0.25)
+    test, _ = prepare_dataset(test_data, args.max_length, split_ratio=0)
 
-    train_loader = build_data_loader(train_tensor, args.batch_size)
-    val_loader = build_data_loader(val_tensor, args.batch_size)
-    test_loader = build_data_loader(test_tensor, args.batch_size)
+    train_loader = DataLoader(TensorDataset(train), batch_size=args.batch_size, shuffle=True)
+    val_loader = DataLoader(TensorDataset(val), batch_size=args.batch_size, shuffle=True)
+    test_loader = DataLoader(TensorDataset(test), batch_size=args.batch_size, shuffle=True)
 
-    train_model(train_loader, val_loader, test_loader, args.epochs, args.max_patience, args.run_id)
+    fit_model(train_loader, val_loader, test_loader, args.epochs, args.run_id)
 
 
 if __name__ == '__main__':
