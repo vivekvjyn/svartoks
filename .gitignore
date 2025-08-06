@@ -4,5 +4,5 @@ __pycache__
 libs/__pycache__
 models/__pycache__
 dataset
-saved_models
+checkpoints
 results
