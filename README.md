@@ -18,9 +18,9 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run the script:
+Run the experiments:
 ```bash
-python train_vqvae.py --epoch EPOCH --batch_size BATCH_SIZE --run_id RUN_ID
+./run.sh
 ```
 
 ## Reference
